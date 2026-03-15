@@ -7,6 +7,7 @@ from app.db import db
 from app.utils.limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from app.routers.users import router as users_router
+from app.routers.logs import router as logs_router
 from contextlib import asynccontextmanager
 
 
@@ -30,3 +31,4 @@ def read_root():
 
 
 app.include_router(users_router, prefix="/api/v1", tags=["users"])
+app.include_router(logs_router, prefix="/api/v1", tags=["logs"])
