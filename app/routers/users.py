@@ -1,10 +1,10 @@
-from unicodedata import name
-
+from jose import jwt, JWTError
 from fastapi import APIRouter, HTTPException, Request
 from app.db import db
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
-from enum import Enum, unique
-from typing import Dict, Optional
+import os
 from app.utils.security import (
     verify_password,
     create_access_token,
@@ -14,6 +14,7 @@ from app.utils.security import (
 from app.utils.limiter import limiter
 
 router = APIRouter()
+security = HTTPBearer()
 
 
 class LoginRequest(BaseModel):
@@ -32,7 +33,7 @@ async def get_users():
     return {"data": []}
 
 
-@router.post("/login")
+@router.post("/auth/login")
 @limiter.limit("5/minute")  # Slightly higher for real users
 async def login(request: Request, data: LoginRequest):
     user = await db.user.find_unique(where={"email": data.email})
@@ -48,12 +49,13 @@ async def login(request: Request, data: LoginRequest):
 
     return {
         "message": "Login successful",
+        "data": {"userId": user.id},
         "access_token": access_token,
         "refresh_token": refresh_token,
     }
 
 
-@router.post("/register")
+@router.post("/auth/register")
 @limiter.limit("5/minute")
 async def register(request: Request, data: RegisterRequest):
     existing_user = await db.user.find_unique(where={"email": data.email})
@@ -78,4 +80,38 @@ async def register(request: Request, data: RegisterRequest):
         "data": {"id": user.id, "email": user.email, "name": user.name},
         "access_token": access_token,
         "refresh_token": refresh_token,
+    }
+
+
+@router.get("/auth/me")
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    if credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+
+    token = credentials.credentials
+    if token.lower().startswith("bearer "):
+        token = token.split(" ", 1)[1].strip()
+
+    SECRET_KEY = os.getenv("SECRET_KEY")
+    ALGORITHM = os.getenv("ALGORITHM")
+
+    if not SECRET_KEY or not ALGORITHM:
+        raise RuntimeError("JWT configuration missing")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = await db.user.find_unique(where={"id": str(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return {
+        "data": {"id": user.id, "email": user.email, "name": user.name},
+        "message": "User retrieved successfully",
     }

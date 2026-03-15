@@ -18,6 +18,17 @@ model User {
   email        String   @unique
   name         String?
   createdAt    DateTime @default(now())
-  password     String   
+  password     String
   refreshToken String?
+  logs         Log[]
+}
+
+model Log {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  content   String
+  tags      String[]
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
