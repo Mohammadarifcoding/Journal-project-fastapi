@@ -2,54 +2,31 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from enum import Enum
 from typing import Dict, Optional
-from .router import router
-
-app = FastAPI()
-
-
-class Event(BaseModel):
-    event_type: str
-    user_id: int
-    metadata: Optional[Dict] = None
+from slowapi import _rate_limit_exceeded_handler
+from app.db import db
+from app.utils.limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from app.routers.users import router as users_router
+from contextlib import asynccontextmanager
 
 
-class ModelName(str, Enum):
-    alexnet = "alexnet"
-    resnet = "resnet"
-    lenet = "lenet"
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await db.connect()
+    print("Database connected!")
+    yield
+    await db.disconnect()
+    print("Database disconnected!")
+
+
+app = FastAPI(lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello World!"}
+    return {"message": "Welcome to Ai Journal platform!"}
 
 
-@app.get("/events/{item_id}")
-def handle_event(
-    item_id: ModelName,
-    # data: Event,
-) -> dict:
-    print(item_id)
-
-    # This is where you implement the AI logic to handle the event
-
-    # Return acceptance response
-    return {"item_id": item_id}
-
-
-@app.get("/users/me")
-async def read_user_me():
-    return {"user_id": "the current user"}
-
-
-@app.get("/users/{user_id}")
-async def read_user(user_id: str):
-    return {"user_id": user_id}
-
-
-@app.get("/files/{file_path:path}")
-async def read_file(file_path: str):
-    return {"file_path": file_path}
-
-
-# app.include_router(router)
+app.include_router(users_router, prefix="/api/v1", tags=["users"])
