@@ -19,7 +19,6 @@ async def create_log(
     request: Request, log_data: LogEntry, user=Depends(auth_middleware)
 ):
     try:
-
         log_doc = {
             "userId": user["id"],
             "title": log_data.title,
@@ -33,9 +32,7 @@ async def create_log(
             "data": {"id": str(result.id), **log_doc},
         }
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail="Failed to create log", error=str(e)
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to create log: {e}")
 
 
 @router.get("/logs")
@@ -45,9 +42,7 @@ async def get_logs(request: Request, user=Depends(auth_middleware)):
         logs = await db.log.find_many(where={"userId": user["id"]})
         return {"data": logs, "message": "Logs fetched successfully"}
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail="Failed to fetch logs", error=str(e)
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to fetch logs: {e}")
 
 
 @router.get("/logs/{log_id}")
@@ -63,15 +58,3 @@ async def get_log(request: Request, log_id: str, user=Depends(auth_middleware)):
             status_code=500,
             detail=f"Failed to fetch logs: {e}",
         )
-
-
-# {
-#   "id": "b879a4bd-a7d8-4c7f-a37b-6aeeb8587244",
-#   "userId": "4b6588b4-15b1-480b-802b-93c3b6c44aa9",
-#   "title": "planning to work on this thing",
-#   "content": "Here i will work with products that's are required",
-#   "tags": [
-#     "emergency",
-#     "life"
-#   ]
-# }

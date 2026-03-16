@@ -1,6 +1,6 @@
-from fastapi import HTTPException, Depends
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import jwt
+from jose import JWTError, jwt
 import os
 
 
@@ -13,6 +13,12 @@ ALGORITHM = os.getenv("ALGORITHM")
 async def auth_middleware(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
+    if credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authentication scheme")
+
+    if not SECRET_KEY or not ALGORITHM:
+        raise HTTPException(status_code=500, detail="JWT configuration missing")
+
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -20,5 +26,5 @@ async def auth_middleware(
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
         return {"id": user_id}
-    except jwt.JWTError:
+    except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
