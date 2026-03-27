@@ -21,7 +21,8 @@ model User {
   password     String
   refreshToken String?
   logs         Log[]
-  notes        Note[]
+
+  noteFiles NoteFile[]
 }
 
 model Log {
@@ -36,15 +37,19 @@ model Log {
 }
 
 model AiAnalysis {
-  id             String   @id @default(uuid())
-  logId          String   @unique
-  summary        String?
-  key_points     String[]
-  suggested_tags String[]
-  status         String   @default("processing")
-  learning_score Int?
-  createdAt      DateTime @default(now())
-  log            Log      @relation(fields: [logId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(uuid())
+  logId               String    @unique
+  summary             String?
+  key_points          String[]  @default([])
+  suggested_tags      String[]  @default([])
+  status              String    @default("queued")
+  learning_score      Int?
+  retryCount          Int       @default(0)
+  lastError           String?
+  processingStartedAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  log                 Log       @relation(fields: [logId], references: [id], onDelete: Cascade)
 }
 
 model NoteFile {

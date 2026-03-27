@@ -1,10 +1,9 @@
-from fastapi import APIRouter, HTTPException, Request, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 from app.utils.limiter import limiter
 from app.middleware.auth import auth_middleware
-from app.ai.generate_summary import generate_summary
+from app.ai.analysis_service import queue_analysis_for_log
 from app.db import db
-import json
 
 router = APIRouter()
 
@@ -15,31 +14,11 @@ class LogEntry(BaseModel):
     tags: list[str] = Field(..., min_items=1)
 
 
-async def analyze_log_background(data: LogEntry, logId: str):
-    try:
-        summary_result = await generate_summary(data)
-        full_data = json.loads(summary_result.json())
-        await db.aianalysis.update(
-            where={"logId": logId},
-            data={
-                "summary": full_data.get("summary"),
-                "key_points": full_data.get("key_points", []),
-                "suggested_tags": full_data.get("suggested_tags", []),
-                "learning_score": int(full_data.get("learning_score", 0)),
-                "status": "completed",
-            },
-        )
-    except Exception as e:
-        print(f"Failed to analyze log {logId}: {e}")
-        await db.aianalysis.update(where={"logId": logId}, data={"status": "failed"})
-
-
 @router.post("/logs")
 @limiter.limit("10/minute")
 async def create_log(
     request: Request,
     log_data: LogEntry,
-    background_tasks: BackgroundTasks,
     user=Depends(auth_middleware),
 ):
     try:
@@ -51,8 +30,7 @@ async def create_log(
         }
         print("Creating log:", log_doc)
         result = await db.log.create(data=log_doc)
-        await db.aianalysis.create(data={"logId": result.id, "status": "processing"})
-        background_tasks.add_task(analyze_log_background, log_data, result.id)
+        await queue_analysis_for_log(result.id)
         return {
             "message": "Log created successfully",
             "data": {
@@ -61,7 +39,7 @@ async def create_log(
                 "content": log_doc["content"],
                 "tags": log_doc["tags"],
                 "createdAt": result.createdAt,
-                "ai_status": "processing",
+                "ai_status": "queued",
             },
         }
     except Exception as e:
@@ -122,15 +100,19 @@ async def get_log_analysis(
         if not analysis:
             raise HTTPException(status_code=404, detail="Analysis not found")
         status_message_map = {
+            "queued": "AI analysis is queued and waiting for the worker.",
             "processing": "AI analysis is still in progress. Please check back later.",
             "completed": "AI analysis completed successfully.",
-            "failed": "AI analysis failed. Please retry.",
+            "failed": "AI analysis failed and will be retried by cron.",
+            "dead_letter": "AI analysis reached retry limit and needs manual review.",
         }
         message = status_message_map.get(analysis.status, "Unknown status")
 
         return {
             "status": analysis.status,
             "message": message,
+            "retry_count": analysis.retryCount,
+            "last_error": analysis.lastError,
             "data": (
                 {
                     "summary": analysis.summary,

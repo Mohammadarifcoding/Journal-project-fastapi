@@ -1,11 +1,10 @@
-import asyncio
 import os
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from pydantic import BaseModel
 
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 class LogEntry(BaseModel):
@@ -52,10 +51,10 @@ Focus on concise, practical learning insights.
 
 
 async def generate_summary(data: LogEntry) -> SummaryResult:
-    response = client.responses.parse(
+    response = await client.responses.parse(
         model="gpt-4o",
         instructions=systemPrompt,
-        input=f"{data.json()}",
+        input=data.model_dump_json(),
         max_output_tokens=150,
         temperature=0.5,
         text_format=SummaryResult,

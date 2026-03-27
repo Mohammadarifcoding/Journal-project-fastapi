@@ -432,3 +432,62 @@ By completing this project you will learn:
 - 4 core modules
 - 1 AI integration layer
 - 1 background processing system
+
+---
+
+# Background Jobs (Production-Learning Setup)
+
+This project now uses a cron-style worker with APScheduler for AI analysis.
+
+Detailed learning guide: `BACKGROUND_JOBS_PLAYBOOK.md`
+
+## What happens now
+
+- API only enqueues analysis (`queued`)
+- Worker picks queued jobs every 30 seconds
+- Failed jobs are retried every 2 minutes
+- Stuck `processing` jobs are marked failed/dead-letter every 5 minutes
+
+## Status flow
+
+`queued -> processing -> completed`
+
+If errors occur:
+
+`processing -> failed -> processing (retry) -> dead_letter`
+
+## New fields on `AiAnalysis`
+
+- `retryCount`
+- `lastError`
+- `processingStartedAt`
+- `updatedAt`
+
+## Run commands
+
+Apply schema and regenerate client:
+
+```bash
+uv run prisma migrate deploy
+uv run prisma generate
+```
+
+Run API server:
+
+```bash
+uv run uvicorn app.main:app --reload
+```
+
+Run worker (separate terminal/process):
+
+```bash
+uv run python -m app.background_jobs.worker
+```
+
+Optional: run scheduler in API process (local-only)
+
+```bash
+RUN_SCHEDULER_IN_API=true
+```
+
+Recommended production mode is separate API + worker processes.
