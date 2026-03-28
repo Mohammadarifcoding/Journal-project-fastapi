@@ -60,3 +60,43 @@ model NoteFile {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
+
+model Job {
+  id String @id @default(uuid())
+
+  type    JobType
+  payload Json
+  result  Json?
+
+  status Status @default(PENDING)
+
+  priority Int @default(0)
+
+  retryCount Int @default(0)
+  maxRetries Int @default(3)
+
+  lastError String?
+
+  scheduledAt DateTime?
+
+  lockedBy String?
+  lockedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, type])
+  @@index([scheduledAt])
+}
+
+enum JobType {
+  EMAIL
+  AI_ANALYSIS
+}
+
+enum Status {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}

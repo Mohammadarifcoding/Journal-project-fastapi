@@ -5,6 +5,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 import os
+from app.jobs.outbox import create_registration_outbox_job, dispatch_outbox_job
 from app.utils.security import (
     verify_password,
     create_access_token,
@@ -66,20 +67,32 @@ async def register(request: Request, data: RegisterRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    user = await db.user.create(
-        data={"email": data.email, "password": hashed_password, "name": data.name}
-    )
-    access_token = create_access_token({"sub": str(user.id)})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    async with db.tx() as tx:
+        user = await tx.user.create(
+            data={"email": data.email, "password": hashed_password, "name": data.name}
+        )
+        access_token = create_access_token({"sub": str(user.id)})
+        refresh_token = create_refresh_token({"sub": str(user.id)})
 
-    await db.user.update(
-        where={"email": data.email}, data={"refreshToken": refresh_token}
-    )
+        await tx.user.update(
+            where={"email": data.email}, data={"refreshToken": refresh_token}
+        )
+        outbox_job_id = await create_registration_outbox_job(
+            tx,
+            user_id=str(user.id),
+            email=user.email,
+        )
+
+    dispatched = await dispatch_outbox_job(outbox_job_id, source="api:register")
     return {
         "message": "User created successfully",
         "data": {"id": user.id, "email": user.email, "name": user.name},
         "access_token": access_token,
         "refresh_token": refresh_token,
+        "background": {
+            "registration_email": "queued" if dispatched else "pending_dispatch",
+            "job_id": outbox_job_id,
+        },
     }
 
 
